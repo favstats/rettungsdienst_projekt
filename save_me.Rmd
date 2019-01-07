@@ -1,0 +1,87 @@
+---
+title: "Tidy Template"
+author: "Fabio Votta"
+date: "The Date"
+output: html_document
+---
+
+This script is about:
+
+Getting data from German Rescue services.
+
+## Packages and Folders
+
+```{r}
+# Install these packages if you don't have them yet
+# if (!require("pacman")) install.packages("pacman")
+# devtools::install_github("favstats/tidytemplate")
+
+pacman::p_load(tidyverse, tidytemplate, rvest, RSelenium)
+
+# Creates folders
+# tidytemplate::data_dir()
+# tidytemplate::images_dir()
+```
+
+
+## Rselenium Set Up
+
+```{r}
+port <- sample(4000L:5000L, 1)
+rD <- rsDriver(verbose = FALSE, port = port)
+
+remDr <- rD$client
+
+url <- "https://www.swr.de/swraktuell/Rettungsdienst-weiter-ueberlastet-Im-Notfall-sind-hunderte-Gemeinden-nicht-ausreichend-versorgt,rettungsdienst-bei-hilfe-im-notfall-ueberlastet-100.html?search=Dornstetten"
+remDr$navigate(url)
+```
+
+## Example
+
+```{r, data}
+page_source <- remDr$getPageSource() %>% 
+  magrittr::extract2(1) %>% 
+  read_html() 
+
+
+paragraph_data <- page_source %>% 
+  html_nodes("#result > div > p:nth-child(3)") %>% 
+  html_nodes("strong") %>% 
+  as.character() %>% 
+  str_remove("<strong>") %>% 
+  str_remove("</strong>") %>% 
+  str_remove("\\*") %>% 
+  str_remove("%") %>% 
+  str_trim() %>% 
+  tibble(time = .) %>% t %>% 
+  as_tibble() %>% 
+  set_names(c("time", "10_min_mark", "15_min_miss", "status"))
+
+table_data <- page_source %>% 
+  html_nodes(".table-responsive") %>% 
+  html_nodes("table") %>% 
+  html_table() %>% 
+  .[[1]] %>% 
+  set_names(.[1,]) %>% 
+  .[-1,] %>% 
+  janitor::clean_names() %>% 
+  gather(key, value, -blaulicht_einsatze) %>% 
+  t() %>% 
+  as_tibble() %>% 
+  rename(rtw_16 = V1, rtw_17 = V3, nef_16 = V2, nef_17 = V4) %>% 
+  .[-1:-2,] 
+
+distance_mna <- page_source %>% 
+  html_nodes("#result p:nth-child(8)") %>% 
+  as.character() %>% 
+  str_match("in (.*?) km") %>% 
+  .[,2] %>% as.numeric()
+
+bind_cols(paragraph_data, table_data) %>% 
+  mutate(distance_mna = distance_mna)
+
+bind_cols(l1 = letters, l2 = letters) %>% 
+  expand.grid()
+ 
+
+```
